@@ -29,14 +29,14 @@ pop_age <- read.csv(here("data", "lookup_pop_by_age.csv")) %>%
   mutate(age_group = factor(age_group, levels = c("0 to 4", "5 to 18",
                                                      "19 to 25", "26 to 64",
                                                      "65+")),
-         population = population * 10)
+         population = population * 10) # Population appears to be missing a trailing 0
 
 pop_region <- read.csv(here("data", "lookup_pop_by_region.csv")) %>%
   mutate(region = factor(region))
 
-england_shape <- st_read(here("data", "england_shapefile", "england_shape.shp"), quiet = TRUE)
+england_shape <- st_read(here("data", "england_shapefile", "england_shape.shp"), quiet = TRUE) # Shape file mapped to PHE regions for visualisation
 
-expand_data <- expand(cases, date, region)
+expand_data <- expand(cases, date, region) # As some days have 0 cases they are missing a line, this exppands the dataframe to allow 0 to be added which improves the estimate of the moving average
 
 cases <- cases %>%
   full_join(expand_data, ., by = c("region", "date"))
@@ -58,13 +58,13 @@ The epidemic curve is shown below. The vertical grey line represents the date of
 ``` {r, epidemi_curve}
 cases %>%
   group_by(date, region) %>%
-  summarise(daily_cases = sum(!is.na(age_group))) %>%
+  summarise(daily_cases = sum(!is.na(age_group))) %>% # This counts the number of cases each day
   ggplot() +
   geom_col(aes(x = date, y = daily_cases, fill = region)) +
-  annotate("rect", xmin = as.Date(max(cases$date-7)), xmax = as.Date(max(cases$date+1)),
+  annotate("rect", xmin = as.Date(max(cases$date-7)), xmax = as.Date(max(cases$date+1)), # This adds the grey box to show periods of likely underreporting
                 ymin = -Inf, ymax = Inf, alpha = 0.2) +
-  geom_vline(xintercept = as.Date("2020-12-20"), colour = "black", alpha = 0.4) +
-  scale_x_date(limits = as.Date(c("2020-12-18", "2021-04-12"))) +
+  geom_vline(xintercept = as.Date("2020-12-20"), colour = "black", alpha = 0.4) + # Adds a line for the first detected case
+  scale_x_date(limits = as.Date(c("2020-12-18", "2021-04-12"))) + # Expands x-axis
   theme_minimal() +
   scale_fill_brewer(type = "qual", palette = "Set1") +
   labs(y = "Daily confirmed cases",
@@ -77,17 +77,17 @@ cases %>%
 ``` {r, incidence_plot_code}
 case_incidence <- cases %>%
   group_by(date, region) %>%
-  summarise(daily_cases = sum(!is.na(age_group))) %>%
+  summarise(daily_cases = sum(!is.na(age_group))) %>% # This produces 0 counts for days without cases alongside the count of cases reported for that day
   left_join(., pop_region, by = "region") %>%
   group_by(region) %>%
-  mutate(daily_rate = (daily_cases/population * 100000),
+  mutate(daily_rate = (daily_cases/population * 100000), # Calculates the rate per 100,000
          ma = slide_index_dbl(daily_rate,
                               date,
                               mean,
                               .before = days(6),
-                              .complete = TRUE),
+                              .complete = TRUE), # This produces the moving average using an index of time, provided by date, the .before argument sets the lookback to 6 days prior. The .complete argument means that the average isn't calculated until there is 7 days of data
          ma = case_when(date >= max(date-7) ~ NA_real_,
-                        TRUE ~ ma))
+                        TRUE ~ ma)) #  Removes the moving average for the last 7 days of data to prevent misinterpretation of data likely to be revised following resolution of reporting delays
 
 ```
 
@@ -102,7 +102,7 @@ ggplot(case_incidence) +
   geom_col(aes(x = date, y = daily_rate)) +
   geom_line(aes(x = date, y = ma), colour = "orange") +
   geom_vline(xintercept = as.Date("2020-12-20"), colour = "black", alpha = 0.4) +
-  facet_wrap(~ region, scales = "free_y") +
+  facet_wrap(~ region, scales = "free_y") + # Removes the issue with a shared y axis for visualising the outbreak
   annotate("rect", xmin = as.Date(max(cases$date-7)), xmax = as.Date(max(cases$date+1)),
                 ymin = -Inf, ymax = Inf, alpha = 0.2) +
   scale_x_date(limits = as.Date(c("2020-12-18", "2021-04-12"))) +
@@ -120,11 +120,11 @@ The below map shows the most recent complete recording weeks (Epidemiological we
 Currently the North West (-23%) and South West (-4%) are showing a falling growth rate while case rates continue to increase in the South East and Yorkshire and Humber growth rates in other regions are less than 10%.
 
 ``` {r, growth_rate_map}
-growth_rate_week <- case_incidence %>%
+growth_rate_week <- case_incidence %>% 
   mutate(week_case = week(date)) %>%
   group_by(region, week_case) %>%
-  summarise(weekly_rate = sum(daily_cases)/mean(population) * 100000) %>%
-  filter(week_case %in% c(max(week_case-1), max(week_case-2))) %>%
+  summarise(weekly_rate = sum(daily_cases)/mean(population) * 100000) %>% # aggregates cases to weekly incidence to assess weekly growth rate
+  filter(week_case %in% c(max(week_case-1), max(week_case-2))) %>% # limits the analysis to the last two complete weeks worth of data
   mutate(diff_rate = weekly_rate-lag(weekly_rate),
          rate_change = round(diff_rate/weekly_rate*100, 0)) %>%
   left_join(., england_shape %>%
@@ -132,11 +132,11 @@ growth_rate_week <- case_incidence %>%
               select(rgn18nm),
             by = c("region" = "rgn18nm")) %>%
   st_as_sf() %>%
-  filter(week_case == 14)
+  filter(week_case == 14) 
 
 plot_list <- list()
 
-for(i in 1:length(growth_rate_week$region)) {
+for(i in 1:length(growth_rate_week$region)) { # This loop produces the weekly case rate plots for each region that are later added as popups to the map
   plot_list[[i]] <- case_incidence %>%
     mutate(week_case = week(date)) %>%
     group_by(region, week_case) %>%
@@ -155,7 +155,7 @@ for(i in 1:length(growth_rate_week$region)) {
 }
 
 
-contpal <- colorNumeric(palette = "RdYlBu",  domain = c(-60, 60), reverse = T)
+contpal <- colorNumeric(palette = "RdYlBu",  domain = c(-100, 100), reverse = T)
 
 leaflet(growth_rate_week,
         width = 800,
@@ -169,7 +169,7 @@ leaflet(growth_rate_week,
               label = paste0("The most recent complete weeks growth rate for ",
                              growth_rate_week$region,
                              " is ",
-                             growth_rate_week$rate_change, "%"),
+                             growth_rate_week$rate_change), # This produces the hover label reporting the regional growth rate
               popup = popupGraph(plot_list)) %>%
   addLegend("topright",
             title = "Growth rate (% change from previous week)",
