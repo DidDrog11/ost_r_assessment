@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?><MD_Metadata xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:srv="http://www.isotc211.org/2005/srv" xmlns:gts="http://www.isotc211.org/2005/gts" xmlns:xalan="http://xml.apache.org/xalan" xmlns:gco="http://www.isotc211.org/2005/gco" xmlns:gml="http://www.opengis.net/gml" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://www.isotc211.org/2005/gmd">
+    <characterSet>
+        <MD_CharacterSetCode codeList="http://www.isotc211.org/2005/resources/Codelist/gmxCodelists.xml#MD_CharacterSetCode" codeListValue="utf8" codeSpace="ISOTC211/19115">utf8</MD_CharacterSetCode>
+    </characterSet>
+    <hierarchyLevel>
+        <MD_ScopeCode codeList="http://www.isotc211.org/2005/resources/Codelist/gmxCodelists.xml#MD_ScopeCode" codeListValue="dataset" codeSpace="ISOTC211/19115">dataset</MD_ScopeCode>
+    </hierarchyLevel>
+    <hierarchyLevelName>
+        <gco:CharacterString>dataset</gco:CharacterString>
+    </hierarchyLevelName>
+    <contact gco:nilReason="missing"/>
+    <dateStamp gco:nilReason="missing"/>
+    <metadataStandardName>
+        <gco:CharacterString>ISO 19139 Geographic Information - Metadata - Implementation Specification</gco:CharacterString>
+    </metadataStandardName>
+    <metadataStandardVersion>
+        <gco:CharacterString>2007</gco:CharacterString>
+    </metadataStandardVersion>
+    <identificationInfo>
+        <MD_DataIdentification>
+            <citation gco:nilReason="missing"/>
+            <abstract>
+                <gco:CharacterString>The feature class contains lab-confirmed case counts for Coronavirus in England and subnational areas. These values are provided by Public Health England, as well as Office for National Statistics data © Crown copyright and database right 2020. This data is sourced from the UK governments Coronavirus dashboard, and thanks to code developed by Esri UK, the service will refresh when the governments dashboard is updated.To read more information such as the data collection and specific sourced, take a look at the data from the .gov.uk website here</gco:CharacterString>
+            </abstract>
+            <purpose>
+                <gco:CharacterString>This feature layer shows the total confirmed, and new daily cases of Coronavirus in each region across England. Data is sourced from Public Health England (PHE) and is updated on a daily basis.</gco:CharacterString>
+            </purpose>
+            <credit>
+                <gco:CharacterString>Public Health England, ONS</gco:CharacterString>
+            </credit>
+            <resourceConstraints>
+                <MD_Constraints>
+                    <useLimitation>
+                        <gco:CharacterString>For feedback on the data email coronavirus-tracker@phe.gov.ukDeveloped by PHE and NHSXAll content is available under the Open Government Licence v3.0 , except where otherwise stated</gco:CharacterString>
+                    </useLimitation>
+                </MD_Constraints>
+            </resourceConstraints>
+            <language gco:nilReason="missing"/>
+            <characterSet>
+                <MD_CharacterSetCode codeList="http://www.isotc211.org/2005/resources/Codelist/gmxCodelists.xml#MD_CharacterSetCode" codeListValue="utf8" codeSpace="ISOTC211/19115">utf8</MD_CharacterSetCode>
+            </characterSet>
+        </MD_DataIdentification>
+    </identificationInfo>
+</MD_Metadata>

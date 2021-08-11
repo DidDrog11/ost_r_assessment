@@ -1,0 +1,242 @@
+---
+title: "Outbreak Report"
+author:
+  - name: "David Simons"
+date: 2021-08-11
+output:
+  html_document:
+    code_folding: hide
+    highlight: zenburn
+    number_sections: true
+    theme: spacelab
+---
+
+Code has been collapsed, it can be unfolded using the button in the top right or for each individual code chunk.
+
+``` {r, setup}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+source(here::here("scripts", "library.R")) # Load required packages
+
+# Import data
+cases <- read.csv(here("data", "example_line_list.csv")) %>%
+  mutate(date = as_date(date),
+         region = factor(region),
+         age_group = factor(age_group, levels = c("0 to 4", "5 to 18",
+                                                     "19 to 25", "26 to 64",
+                                                     "65+"))) #Format variables appropriately
+
+pop_age <- read.csv(here("data", "lookup_pop_by_age.csv")) %>%
+  mutate(age_group = factor(age_group, levels = c("0 to 4", "5 to 18",
+                                                     "19 to 25", "26 to 64",
+                                                     "65+")),
+         population = population * 10)
+
+pop_region <- read.csv(here("data", "lookup_pop_by_region.csv")) %>%
+  mutate(region = factor(region))
+
+england_shape <- st_read(here("data", "england_shapefile", "england_shape.shp"), quiet = TRUE)
+
+expand_data <- expand(cases, date, region)
+
+cases <- cases %>%
+  full_join(expand_data, ., by = c("region", "date"))
+
+first_detection <- min(cases$date) # Earliest case in the linelist
+
+total_cases <- table(!is.na(cases$age_group)) # TRUE are cases, FALSE are expanded days with 0 cases
+```
+
+## Current situation
+
+Data have been provided as a linelist of cases containing information on the date of testing, the region in which the person was tested and their age group at time of testing. The index case was detected on 2020-12-20, following which an assay was developed with testing beginning in 2021. The first case detected using this assay was on 2021-01-02, the most recent case was detected on 2021-04-11. Since 2021-01-02 8,419 test confirmed cases have been recorded. 
+
+There are likely a greater number of true cases than those captured during the early parts of this epidemic. Important additional data would include the case definition, the number of tests performed, access to testing and how that may have changed over time. In order to calculate epidemic parameters including *R~0~*/*R~t~* and the force of infection we would need additional data from contact tracing to estimate the serial interval.
+
+## Epidemic curve
+The epidemic curve is shown below. The vertical grey line represents the date of the index case. The grey box contains data from the last week which may be under-reported.
+
+``` {r, epidemi_curve}
+cases %>%
+  group_by(date, region) %>%
+  summarise(daily_cases = sum(!is.na(age_group))) %>%
+  ggplot() +
+  geom_col(aes(x = date, y = daily_cases, fill = region)) +
+  annotate("rect", xmin = as.Date(max(cases$date-7)), xmax = as.Date(max(cases$date+1)),
+                ymin = -Inf, ymax = Inf, alpha = 0.2) +
+  geom_vline(xintercept = as.Date("2020-12-20"), colour = "black", alpha = 0.4) +
+  scale_x_date(limits = as.Date(c("2020-12-18", "2021-04-12"))) +
+  theme_minimal() +
+  scale_fill_brewer(type = "qual", palette = "Set1") +
+  labs(y = "Daily confirmed cases",
+       x = "Date",
+       caption = "n.b. data from the last week may include underreporting",
+       fill = "Region",
+       title = "Epidemic curve of novel virus")
+```
+
+``` {r, incidence_plot_code}
+case_incidence <- cases %>%
+  group_by(date, region) %>%
+  summarise(daily_cases = sum(!is.na(age_group))) %>%
+  left_join(., pop_region, by = "region") %>%
+  group_by(region) %>%
+  mutate(daily_rate = (daily_cases/population * 100000),
+         ma = slide_index_dbl(daily_rate,
+                              date,
+                              mean,
+                              .before = days(6),
+                              .complete = TRUE),
+         ma = case_when(date >= max(date-7) ~ NA_real_,
+                        TRUE ~ ma))
+
+```
+
+## Regional incidence
+
+The below figure explores the changing rate of newly confirmed cases split by region. The orange line is the 7 day moving average, days with no cases reported from a region on a date where set as 0 confirmed cases. The North East has the greatest number of case notifications per 100,000 and has remained around 10 times greater since the start of the outbreak.
+
+The has been a fluctuation in the number of cases reported throughout the course of the outbreak. Following introduction of the virus in December 2020 detected cases reached an initial peak in most regions at the end of January or beginning of February. This fell to a nadir in March before beginning to increase across all regions into April. The course of the outbreak following this point is currently unclear however, most regions have continued to report a growth in cases up until the last week of complete recording.
+
+``` {r, incidence_plot}
+ggplot(case_incidence) +
+  geom_col(aes(x = date, y = daily_rate)) +
+  geom_line(aes(x = date, y = ma), colour = "orange") +
+  geom_vline(xintercept = as.Date("2020-12-20"), colour = "black", alpha = 0.4) +
+  facet_wrap(~ region, scales = "free_y") +
+  annotate("rect", xmin = as.Date(max(cases$date-7)), xmax = as.Date(max(cases$date+1)),
+                ymin = -Inf, ymax = Inf, alpha = 0.2) +
+  scale_x_date(limits = as.Date(c("2020-12-18", "2021-04-12"))) +
+  theme_minimal() +
+  labs(y = "Daily cases/100,000",
+       x = "Date",
+       caption = "n.b. y-axis scale varies by region")
+
+```
+
+## Regional growth rates
+
+The below map shows the most recent complete recording weeks (Epidemiological week 14) growth rate as a percentage. Regions of England are shown to PHE designations and matched to cases in the linelist. Highlighting a region shows the growth rate of cases/100,000 from week 14 compared to week 13. Week 15 is not complete and so has been ignored for this analysis. Selecting the region displays the epidemiological curve for the region at weekly case level.
+
+Currently the North West (-23%) and South West (-4%) are showing a falling growth rate while case rates continue to increase in the South East and Yorkshire and Humber growth rates in other regions are less than 10%.
+
+``` {r, growth_rate_map}
+growth_rate_week <- case_incidence %>%
+  mutate(week_case = week(date)) %>%
+  group_by(region, week_case) %>%
+  summarise(weekly_rate = sum(daily_cases)/mean(population) * 100000) %>%
+  filter(week_case %in% c(max(week_case-1), max(week_case-2))) %>%
+  mutate(diff_rate = weekly_rate-lag(weekly_rate),
+         rate_change = round(diff_rate/weekly_rate*100, 0)) %>%
+  left_join(., england_shape %>%
+              mutate(rgn18nm = recode(rgn18nm, "Yorkshire and The Humber" = "Yorkshire and Humber")) %>%
+              select(rgn18nm),
+            by = c("region" = "rgn18nm")) %>%
+  st_as_sf() %>%
+  filter(week_case == 14)
+
+plot_list <- list()
+
+for(i in 1:length(growth_rate_week$region)) {
+  plot_list[[i]] <- case_incidence %>%
+    mutate(week_case = week(date)) %>%
+    group_by(region, week_case) %>%
+    summarise(weekly_rate = sum(daily_cases)/mean(population) * 100000) %>%
+    filter(region == as.character(growth_rate_week$region[i])) %>%
+    ggplot() +
+    geom_col(aes(x = week_case, y = weekly_rate)) +
+    annotate("rect", xmin = 14, xmax = 16,
+             ymin = -Inf, ymax = Inf, alpha = 0.2) +
+    scale_x_continuous(limits = c(0, 16)) +
+    labs(title = as.character(growth_rate_week$region[i]),
+         x = "Epidemiological week",
+         y = "Weekly case rate/100,000",
+         caption = "n.b. Most recent week ignored for calculation of growth rate") +
+    theme_minimal()
+}
+
+
+contpal <- colorNumeric(palette = "RdYlBu",  domain = c(-60, 60), reverse = T)
+
+leaflet(growth_rate_week,
+        width = 800,
+        height = 800) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(color = "black",
+              fillColor = ~contpal(rate_change),
+              fillOpacity = 0.8,
+              weight = 1,
+              smoothFactor = 0.2,
+              label = paste0("The most recent complete weeks growth rate for ",
+                             growth_rate_week$region,
+                             " is ",
+                             growth_rate_week$rate_change, "%"),
+              popup = popupGraph(plot_list)) %>%
+  addLegend("topright",
+            title = "Growth rate (% change from previous week)",
+            pal = contpal,
+            opacity = 0.8,
+            values = ~rate_change,
+            group = "Growth rate")
+
+
+```
+
+## Incidence by age group
+
+Population numbers by age seemed to be missing a 0 and so have been multiplied by 10 to match the population from all of the regions.
+
+Case rates are greatest in the 5-18 age group peaking earlier and remaining higher throughout the outbreak until April when cases rates in the other groups have increased to a similar level. All age groups follow a similar pattern with a fall in case rates following a peak in late January to early February to a nadir in March with a subsequent rise.
+
+``` {r, age_group}
+cases %>%
+  group_by(date, age_group) %>%
+  count(date, name = "daily_cases") %>%
+  left_join(., pop_age, by = "age_group") %>%
+  group_by(age_group) %>%
+  mutate(daily_rate = (daily_cases/population * 100000),
+         ma = slide_index_dbl(daily_rate,
+                              date,
+                              mean,
+                              .before = days(6),
+                              .complete = TRUE),
+         ma = case_when(date >= max(date-7) ~ NA_real_,
+                        TRUE ~ ma)) %>%
+  drop_na(age_group) %>%
+  ggplot() +
+  geom_col(aes(x = date, y = daily_rate)) +
+  geom_line(aes(x = date, y = ma), colour = "orange") +
+  geom_vline(xintercept = as.Date("2020-12-20"), colour = "black", alpha = 0.4) +
+  facet_wrap(~ age_group, scales = "free_y") +
+  annotate("rect", xmin = as.Date(max(cases$date-7)), xmax = as.Date(max(cases$date+1)),
+                ymin = -Inf, ymax = Inf, alpha = 0.2) +
+  scale_x_date(limits = as.Date(c("2020-12-18", "2021-04-12"))) +
+  theme_minimal() +
+  labs(y = "Daily cases/100,000",
+       x = "Date",
+       caption = "n.b. y-axis scale varies by age-group")
+```
+
+### High risk groups
+
+Across the entirety of the current outbreak the rate of infection has been greatest in the 5 to 18 age group at nearly twice that of other age groups. However, due to lack of further information about testing procedures, test availability, symptoms and contact tracing a statistical test to demonstrate different risk among the age groups seems inappropriate.
+
+Despite the above reservations there does seem to be a signal worth further evaluation in the 5 - 18 group. It is unclear from the available information whether their increased rate of diagnosis is due to increased contact rates (i.e. in educational settings), increased symptomatic disease and therefore healthcare seeking behaviour, increased availability of testing (i.e. routine testing in educational settings) or a property of the route of infection of the virus would be worth further investigation.
+
+``` {r, differences_rate}
+cases %>%
+  group_by(age_group) %>%
+  drop_na(age_group) %>%
+  count(age_group, name = "total_cases") %>%
+  left_join(., pop_age, by = "age_group") %>%
+  mutate(rate_infection = round(total_cases/population * 100000, 2)) %>%
+  rename("Age group" = "age_group",
+         "Total confirmed cases" = "total_cases",
+         "Population" = "population",
+         "Rate of infection/100,000" = "rate_infection") %>%
+  knitr::kable()
+
+```
+
+### Resources
+
+PHE shapefile obtained [here](https://covid19.esriuk.com/datasets/public-health-england-phe-covid-19-data-by-region/explore?location=52.846767%2C-2.300736%2C7.50)
